@@ -34,13 +34,17 @@ function VirtualList(config) {
   var height = (config && config.h + 'px') || '100%';
   var itemHeight = this.itemHeight = config.itemHeight;
 
-  this.items = config.items;
+  this.lastFrom = -1;
+  this.loading = false;
+  this.request = null;
+  this.getNodes = config.getNodes;
   this.generatorFn = config.generatorFn;
-  this.totalRows = config.totalRows || (config.items && config.items.length);
+  this.totalRows = 0;
+  this.nextChunk = false;
 
-  var scroller = VirtualList.createScroller(itemHeight * this.totalRows);
+  this.scroller = VirtualList.createScroller(0);
   this.container = VirtualList.createContainer(width, height);
-  this.container.appendChild(scroller);
+  this.container.appendChild(this.scroller);
 
   var screenItemsLen = Math.ceil(config.h / itemHeight);
   // Cache 4 times the number of items that fit in the container viewport
@@ -64,35 +68,25 @@ function VirtualList(config) {
   }, 300);
 
   function onScroll(e) {
-    var scrollTop = e.target.scrollTop; // Triggers reflow
-    if (!lastRepaintY || Math.abs(scrollTop - lastRepaintY) > maxBuffer) {
-      var first = parseInt(scrollTop / itemHeight) - screenItemsLen;
-      self._renderChunk(self.container, first < 0 ? 0 : first);
-      lastRepaintY = scrollTop;
-    }
+    // Delay the render in case the user is scrolling very fast, and won't see the directly adjacent items.
+    setTimeout(function() {
+      var scrollTop = e.target.scrollTop; // Triggers reflow
+      if (!lastRepaintY || Math.abs(scrollTop - lastRepaintY) > maxBuffer) {
+	var first = parseInt(scrollTop / itemHeight) - screenItemsLen;
+	self._renderChunk(self.container, first < 0 ? 0 : first);
+	lastRepaintY = scrollTop;
+      }
 
-    lastScrolled = Date.now();
-    e.preventDefault && e.preventDefault();
+      lastScrolled = Date.now();
+      e.preventDefault && e.preventDefault();
+    }, 200);
   }
 
   this.container.addEventListener('scroll', onScroll);
 }
 
-VirtualList.prototype.createRow = function(i) {
-  var item;
-  if (this.generatorFn)
-    item = this.generatorFn(i);
-  else if (this.items) {
-    if (typeof this.items[i] === 'string') {
-      var itemText = document.createTextNode(this.items[i]);
-      item = document.createElement('div');
-      item.style.height = this.itemHeight + 'px';
-      item.appendChild(itemText);
-    } else {
-      item = this.items[i];
-    }
-  }
-
+VirtualList.prototype.createRow = function(item, i) {
+  var item = this.generatorFn(item);
   item.classList.add('vrow');
   item.style.position = 'absolute';
   item.style.top = (i * this.itemHeight) + 'px';
@@ -110,23 +104,49 @@ VirtualList.prototype.createRow = function(i) {
  * @return {void}
  */
 VirtualList.prototype._renderChunk = function(node, from) {
-  var finalItem = from + this.cachedItemsLen;
-  if (finalItem > this.totalRows)
-    finalItem = this.totalRows;
+  var self = this;
 
-  // Append all the new rows in a document fragment that we will later append to
-  // the parent node
-  var fragment = document.createDocumentFragment();
-  for (var i = from; i < finalItem; i++) {
-    fragment.appendChild(this.createRow(i));
+  if (self.loading) {
+    // If we are already loading items, save this chunk render to be executed next.
+    // This will replace any other queued chunk that is now outdated.
+    self.nextChunk = {
+      node: node,
+      from: from
+    }
   }
+  else {
+    self.nextChunk = false;
+    self.loading = true;
 
-  // Hide and mark obsolete nodes for deletion.
-  for (var j = 1, l = node.childNodes.length; j < l; j++) {
-    node.childNodes[j].style.display = 'none';
-    node.childNodes[j].setAttribute('data-rm', '1');
+    // Get all new items.
+    this.getNodes(from, self.cachedItemsLen, function(items, newTotalRows) {
+      self.updateTotalRows(newTotalRows);
+
+      // Append all the new rows in a document fragment that we will later append to
+      // the parent node
+      var fragment = document.createDocumentFragment();
+      for (var i = 0; i < items.length; i++) {
+	fragment.appendChild(self.createRow(items[i], from + i));
+      }
+
+      // Hide and mark obsolete nodes for deletion.
+      for (var j = 1, l = node.childNodes.length; j < l; j++) {
+	node.childNodes[j].style.display = 'none';
+	node.childNodes[j].setAttribute('data-rm', '1');
+      }
+      node.appendChild(fragment);
+      self.loading = false;
+      if (self.nextChunk) {
+	// If there is another chunk queued to be rendered, render that now.
+	self._renderChunk(self.nextChunk.node, self.nextChunk.from);
+      }
+    });
   }
-  node.appendChild(fragment);
+};
+
+VirtualList.prototype.updateTotalRows = function(totalRows) {
+  this.totalRows = totalRows
+  this.scroller.style.height = (this.itemHeight * this.totalRows) + 'px';
 };
 
 VirtualList.createContainer = function(w, h) {

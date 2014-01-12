@@ -10,39 +10,157 @@
   <link rel="stylesheet" type="text/css" media="screen,print" href="style.css"/>
 </head>
 <body>
-<script type="text/javascript" src="../vlist.js"></script>
-<script>
-  /*
-  var bigAssList = [];
-  for (var i = 0; i < 10000; i++) {
-    var el = document.createElement("div");
-    el.classList.add("item");
-    el.innerHTML = "ITEM " + i;
-    el.style.borderBottom = "1px solid red";
-    bigAssList.push(el);
-  }
+  <label for="latency">Latency (ms): </label><input name="latency" id="latency" type="text" value="1000"/>
+  <label for="calls">Calls: </label><input readonly="readonly" name="calls" id="calls" type="text" value="0"/>
+  <label for="total-calls">Total Calls: </label><input readonly="readonly" name="total-calls" id="total-calls" type="text" value="0"/>
+  <input id="insertStart" type="button" value="Insert at start of DB."/>
+  <input id="removeStart" type="button" value="Remove from start of DB."/>
+  <input id="update" type="button" value="Update DB items."/>
+  <script type="text/javascript" src="../vlist.js"></script>
+  <script>
 
-  var list = new ScrollableList({
-    w: 300,
-    h: 300,
-    items: bigAssList,
-    itemHeight: 31
-  });
-  */
+   function DB() {
+     var lastEditedEtag = 0;
+     var store = [];
+     for (var i = 0; i < 3000; i++) {
+       store.push("person " + i);
+     }
 
-  var list = new VirtualList({
-    h: window.innerHeight,
-    itemHeight: 30,
-    totalRows: 100000,
-    generatorFn: function(row) {
-      var el = document.createElement("div");
-      el.innerHTML = "<p>ITEM " + row + "</p>";
-      return el;
-    }
-  });
+     this.retrievePage = function(pageIndex, callback) {
+       document.getElementById('calls').value = parseInt(document.getElementById('calls').value) + 1;
+       document.getElementById('total-calls').value = parseInt(document.getElementById('total-calls').value) + 1;
 
-  list.container.classList.add("container");
-  document.body.appendChild(list.container)
-</script>
+       var end = (pageIndex + 1) * pageSize;
+       if (end > store.length) {
+	 end = store.length;
+       }
+
+       requestedItems = [];
+       for (var i = pageIndex * pageSize; i < end; i++) {
+	 requestedItems.push(store[i]);
+       }
+       setTimeout(function() {
+	 document.getElementById('calls').value = parseInt(document.getElementById('calls').value) - 1;
+	 callback(requestedItems, lastEditedEtag);
+       }, document.getElementById('latency').value);
+     }
+
+     this.storeLength = function() {
+       return store.length;
+     }
+
+     this.insertStart = function() {
+       var oldStore = store;
+       store = [];
+       store[0] = 'NEW PERSON!!!';
+       for (var i = 0; i < oldStore.length; i++) {
+	 store.push(oldStore[i]);
+       }
+       lastEditedEtag++;
+     }
+
+     this.removeStart = function() {
+       var oldStore = store;
+       store = [];
+       for (var i = 1; i < oldStore.length; i++) {
+	 store.push(oldStore[i]);
+       }
+       lastEditedEtag++;
+     }
+
+     this.update = function() {
+       for (var i = 0; i < store.length; i++) {
+	 store[i] = store[i] + ' UPDATED!';
+       }
+       lastEditedEtag++;
+     }
+   }
+
+   // Object to represent Owncloud server calls.
+   var db = new DB();
+   document.getElementById('insertStart').addEventListener('click', db.insertStart);
+   document.getElementById('removeStart').addEventListener('click', db.removeStart);
+   document.getElementById('update').addEventListener('click', db.update);
+
+   // Local cache of items.
+   var items = [];
+
+   // Last etag received from server.
+   var lastEtag;
+
+   var pageSize = 100;
+   // Determine the index of the page a particular item is on.
+   function getPageIndex(itemIndex) {
+       return parseInt(itemIndex / pageSize);
+   }
+
+   function retrieveNodes(start, end, callback, originalStart) {
+     if (start > end) {
+       callback();
+       return;
+     }
+     if (originalStart === undefined) {
+       originalStart = start;
+     }
+     for (var i = start; i < end; i++) {
+       if (items[i] === undefined) {
+	 var pageIndex = getPageIndex(i)
+	 db.retrievePage(pageIndex, function(requestedItems, etag) {
+	   if (etag != lastEtag) {
+	     refresh(pageIndex);
+	   }
+	   var itemInsertionStart = pageIndex * pageSize;
+	   for (var j = 0; j < requestedItems.length; j++) {
+	     items[itemInsertionStart + j] = requestedItems[j];
+	   }
+	   if (etag != lastEtag) {
+	     lastEtag = etag;
+	     retrieveNodes(originalStart, end, callback);
+	   }
+	   else {
+	     retrieveNodes(i + 1, end, callback, originalStart);
+	   }
+	 });
+	 return;
+       }
+     }
+     callback();
+   }
+
+   // From: http://stackoverflow.com/a/9329476.
+   function arrayHasOwnIndex(array, prop) {
+     return array.hasOwnProperty(prop) && /^0$|^[1-9]\d*$/.test(prop) && prop <= 4294967294; // 2^32 - 2
+   }
+
+   function refresh() {
+     for (index in items) {
+       if (arrayHasOwnIndex(items, index)) {
+	 items[index] = undefined;
+       }
+     }
+   }
+
+   var list = new VirtualList({
+     h: window.innerHeight - 100,
+     itemHeight: 30,
+     generatorFn: function(node) {
+       var el = document.createElement("div");
+       el.innerHTML = "<p style='height: 30px;'>" + node + "</p>";
+       return el;
+     },
+     getNodes: function(offset, count, callback) {
+       var end = offset + count;
+       if (offset + count > db.storeLength()) {
+	 end = db.storeLength();
+       }
+       retrieveNodes(offset, end, function(){
+	 callback(items.slice(offset, end), db.storeLength())
+       });
+     }
+   });
+
+   list.container.classList.add("container");
+   document.body.appendChild(list.container)
+  </script>
 </body>
 </html>
