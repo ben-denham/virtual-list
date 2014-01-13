@@ -35,19 +35,12 @@
        if (end > store.length) {
 	 end = store.length;
        }
+       requestedItems = store.slice(pageIndex * pageSize, end);
 
-       requestedItems = [];
-       for (var i = pageIndex * pageSize; i < end; i++) {
-	 requestedItems.push(store[i]);
-       }
        setTimeout(function() {
 	 document.getElementById('calls').value = parseInt(document.getElementById('calls').value) - 1;
-	 callback(requestedItems, lastEditedEtag);
+	 callback(requestedItems, lastEditedEtag, store.length);
        }, document.getElementById('latency').value);
-     }
-
-     this.storeLength = function() {
-       return store.length;
      }
 
      this.insertStart = function() {
@@ -85,6 +78,8 @@
 
    // Local cache of items.
    var items = [];
+   // Number of items stored on the server.
+   var itemsCount = 0;
 
    // Last etag received from "server".
    var lastEtag;
@@ -104,7 +99,8 @@
        // Check if we have a local copy of this item.
        if (items[i] === undefined) {
 	 var pageIndex = getPageIndex(i);
-	 db.retrievePage(pageIndex, function(requestedItems, etag) {
+	 db.retrievePage(pageIndex, function(requestedItems, etag, newItemsCount) {
+	   itemsCount = newItemsCount;
 	   // If our etag is out of date, clear all local items.
 	   if (etag != lastEtag) {
 	     clearItems();
@@ -146,14 +142,14 @@
      },
      getItems: function(offset, count, callback) {
        var end = offset + count;
-       if (end > db.storeLength()) {
-	 end = db.storeLength();
+       if (end > itemsCount) {
+	 end = itemsCount;
        }
-       retrieveItems(offset, end, function(){
-	 if (end > db.storeLength()) {
-	   end = db.storeLength();
+       retrieveItems(offset, end, function(newItemsCount){
+	 if (end > itemsCount) {
+	   end = itemsCount;
 	 }
-	 callback(items.slice(offset, end), db.storeLength())
+	 callback(items.slice(offset, end), itemsCount)
        });
      }
    });
