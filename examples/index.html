@@ -10,9 +10,14 @@
   <link rel="stylesheet" type="text/css" media="screen,print" href="style.css"/>
 </head>
 <body>
+  <label for="count">Starting contacts: </label><input name="count" id="count" type="text" value="3000"/>
+  <label for="pageSize">Contacts per page: </label><input name="pageSize" id="pageSize" type="text" value="100"/>
+  <input id="rebuild" type="button" value="Rebuild list and DB from scratch."/>
+  <br/><br/>
   <label for="latency">DB request Latency (ms): </label><input name="latency" id="latency" type="text" value="1000"/>
   <label for="calls">Active DB requests: </label><input readonly="readonly" name="calls" id="calls" type="text" value="0"/>
   <label for="total-calls">Total DB requests: </label><input readonly="readonly" name="total-calls" id="total-calls" type="text" value="0"/>
+  <br/><br/>
   <input id="refresh" type="button" value="Refresh."/>
   <input id="insertStart" type="button" value="Insert at start of DB."/>
   <input id="removeStart" type="button" value="Remove from start of DB."/>
@@ -23,7 +28,8 @@
    function DB() {
      var lastEditedEtag = 0;
      var store = [];
-     for (var i = 0; i < 3000; i++) {
+     var storeCount = parseInt(document.getElementById('count').value);
+     for (var i = 0; i < storeCount; i++) {
        store.push("person " + i);
      }
 
@@ -70,21 +76,6 @@
      }
    }
 
-   // Object to represent Owncloud server calls.
-   var db = new DB();
-   document.getElementById('insertStart').addEventListener('click', db.insertStart);
-   document.getElementById('removeStart').addEventListener('click', db.removeStart);
-   document.getElementById('edit').addEventListener('click', db.edit);
-
-   // Local cache of items.
-   var items = [];
-   // Number of items stored on the server.
-   var itemsCount = 0;
-
-   // Last etag received from "server".
-   var lastEtag;
-
-   var pageSize = 100;
    // Determine the index of the page a particular item is on.
    function getPageIndex(itemIndex) {
        return parseInt(itemIndex / pageSize);
@@ -138,35 +129,64 @@
      items = [];
    }
 
-   var list = new VirtualList({
-     h: window.innerHeight - 100,
-     itemHeight: 30,
-     generatorFn: function(item) {
-       var el = document.createElement("div");
-       el.innerHTML = "<p style='height: 30px;'>" + item + "</p>";
-       return el;
-     },
-     getItems: function(offset, count, callback) {
-       var end = offset + count;
-       retrieveItems(offset, end, function() {
-	 // The itemsCount may have been updated after the last server request.
-	 if (end > itemsCount) {
-	   end = itemsCount;
-	 }
-	 callback(items.slice(offset, end), itemsCount)
-       });
+   var items, itemsCount, lastEtag, pageSize, list, db;
+   function rebuild() {
+     // Clear any existing dom elements/listeners/intervals.
+     if (list) {
+       list.container.remove();
+       clearInterval(list.rmNodeInterval);
      }
-   });
+     document.getElementById('insertStart').removeEventListener('click');
+     document.getElementById('removeStart').removeEventListener('click');
+     document.getElementById('edit').removeEventListener('click');
+     document.getElementById('refresh').removeEventListener('click');
 
-   // Force items to refresh from DB.
-   function refresh() {
-     clearItems();
-     list.refresh();
+     // Object to represent Owncloud server calls.
+     db = new DB();
+     document.getElementById('insertStart').addEventListener('click', db.insertStart);
+     document.getElementById('removeStart').addEventListener('click', db.removeStart);
+     document.getElementById('edit').addEventListener('click', db.edit);
+
+     // Local cache of items.
+     items = [];
+     // Number of items stored on the server.
+     itemsCount = 0;
+
+     // Last etag received from "server".
+     lastEtag = -1;
+
+     pageSize = parseInt(document.getElementById('pageSize').value);;
+
+     list = new VirtualList({
+       h: window.innerHeight - 150,
+       itemHeight: 30,
+       generatorFn: function(item) {
+	 var el = document.createElement("div");
+	 el.innerHTML = "<p style='height: 30px;'>" + item + "</p>";
+	 return el;
+       },
+       getItems: function(offset, count, callback) {
+	 var end = offset + count;
+	 retrieveItems(offset, end, function() {
+	   // The itemsCount may have been updated after the last server request.
+					     if (end > itemsCount) {
+	     end = itemsCount;
+	   }
+	   callback(items.slice(offset, end), itemsCount)
+	 });
+       }
+     });
+
+     document.getElementById('refresh').addEventListener('click', function() {
+       clearItems();
+       list.refresh();
+     });
+     list.container.classList.add("container");
+     document.body.appendChild(list.container);
    }
-   document.getElementById('refresh').addEventListener('click', refresh);
+   document.getElementById('rebuild').addEventListener('click', rebuild);
 
-   list.container.classList.add("container");
-   document.body.appendChild(list.container)
+   rebuild();
   </script>
 </body>
 </html>
