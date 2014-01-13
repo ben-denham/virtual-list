@@ -37,7 +37,7 @@ function VirtualList(config) {
   this.lastFrom = -1;
   this.loading = false;
   this.request = null;
-  this.getNodes = config.getNodes;
+  this.getItems = config.getItems;
   this.generatorFn = config.generatorFn;
   this.totalRows = 0;
   this.nextChunk = false;
@@ -49,7 +49,7 @@ function VirtualList(config) {
   var screenItemsLen = Math.ceil(config.h / itemHeight);
   // Cache 4 times the number of items that fit in the container viewport
   this.cachedItemsLen = screenItemsLen * 3;
-  this._renderChunk(this.container, 0);
+  this._renderChunk(0);
 
   var self = this;
   var lastRepaintY;
@@ -67,22 +67,29 @@ function VirtualList(config) {
     }
   }, 300);
 
-  function onScroll(e) {
-    // Delay the render in case the user is scrolling very fast, and won't see the directly adjacent items.
-    setTimeout(function() {
-      var scrollTop = e.target.scrollTop; // Triggers reflow
-      if (!lastRepaintY || Math.abs(scrollTop - lastRepaintY) > maxBuffer) {
-	var first = parseInt(scrollTop / itemHeight) - screenItemsLen;
-	self._renderChunk(self.container, first < 0 ? 0 : first);
-	lastRepaintY = scrollTop;
-      }
+  function scrollUpdate(scrollTop) {
+    if (!lastRepaintY || Math.abs(scrollTop - lastRepaintY) > maxBuffer) {
+      var first = parseInt(scrollTop / itemHeight) - screenItemsLen;
+      self._renderChunk(first < 0 ? 0 : first);
+      lastRepaintY = scrollTop;
+    }
+  }
 
+  function onScroll(e) {
+    // Delay the render in case the user is scrolling very fast, and won't see directly adjacent items.
+    setTimeout(function() {
+      scrollUpdate(e.target.scrollTop); // Triggers reflow
       lastScrolled = Date.now();
       e.preventDefault && e.preventDefault();
     }, 200);
   }
 
   this.container.addEventListener('scroll', onScroll);
+
+  this.refresh = function() {
+    lastRepaintY = false;
+    scrollUpdate(this.container.scrollTop);
+  }
 }
 
 VirtualList.prototype.createRow = function(item, i) {
@@ -99,27 +106,24 @@ VirtualList.prototype.createRow = function(item, i) {
  * deletion instead of deleting them right away, which would suddenly stop the
  * acceleration. We delete them once scrolling has finished.
  *
- * @param {Node} node Parent node where we want to append the children chunk.
  * @param {Number} from Starting position, i.e. first children index.
  * @return {void}
  */
-VirtualList.prototype._renderChunk = function(node, from) {
+VirtualList.prototype._renderChunk = function(from) {
   var self = this;
+  var node = self.container;
 
   if (self.loading) {
     // If we are already loading items, save this chunk render to be executed next.
     // This will replace any other queued chunk that is now outdated.
-    self.nextChunk = {
-      node: node,
-      from: from
-    }
+    self.nextChunk = from;
   }
   else {
     self.nextChunk = false;
     self.loading = true;
 
     // Get all new items.
-    this.getNodes(from, self.cachedItemsLen, function(items, newTotalRows) {
+    this.getItems(from, self.cachedItemsLen, function(items, newTotalRows) {
       self.updateTotalRows(newTotalRows);
 
       // Append all the new rows in a document fragment that we will later append to
@@ -138,7 +142,7 @@ VirtualList.prototype._renderChunk = function(node, from) {
       self.loading = false;
       if (self.nextChunk) {
 	// If there is another chunk queued to be rendered, render that now.
-	self._renderChunk(self.nextChunk.node, self.nextChunk.from);
+	self._renderChunk(self.nextChunk);
       }
     });
   }

@@ -13,6 +13,7 @@
   <label for="latency">Latency (ms): </label><input name="latency" id="latency" type="text" value="1000"/>
   <label for="calls">Calls: </label><input readonly="readonly" name="calls" id="calls" type="text" value="0"/>
   <label for="total-calls">Total Calls: </label><input readonly="readonly" name="total-calls" id="total-calls" type="text" value="0"/>
+  <input id="refresh" type="button" value="Refresh."/>
   <input id="insertStart" type="button" value="Insert at start of DB."/>
   <input id="removeStart" type="button" value="Remove from start of DB."/>
   <input id="update" type="button" value="Update DB items."/>
@@ -85,7 +86,7 @@
    // Local cache of items.
    var items = [];
 
-   // Last etag received from server.
+   // Last etag received from "server".
    var lastEtag;
 
    var pageSize = 100;
@@ -94,31 +95,35 @@
        return parseInt(itemIndex / pageSize);
    }
 
-   function retrieveNodes(start, end, callback, originalStart) {
-     if (start > end) {
-       callback();
-       return;
-     }
+   function retrieveItems(start, end, callback, originalStart) {
+     // Set the original starting point for this call.
      if (originalStart === undefined) {
        originalStart = start;
      }
      for (var i = start; i < end; i++) {
+       // Check if we have a local copy of this item.
        if (items[i] === undefined) {
-	 var pageIndex = getPageIndex(i)
+	 var pageIndex = getPageIndex(i);
 	 db.retrievePage(pageIndex, function(requestedItems, etag) {
+	   // If our etag is out of date, clear all local items.
 	   if (etag != lastEtag) {
-	     refresh(pageIndex);
+	     clearItems();
 	   }
-	   var itemInsertionStart = pageIndex * pageSize;
+
+	   // Insert the newly retrieved items.
 	   for (var j = 0; j < requestedItems.length; j++) {
-	     items[itemInsertionStart + j] = requestedItems[j];
+	     items[pageIndex * pageSize + j] = requestedItems[j];
 	   }
+
 	   if (etag != lastEtag) {
 	     lastEtag = etag;
-	     retrieveNodes(originalStart, end, callback);
+	     // Restart item retrieval for this entire call, as
+	     // previously retrieved items may be out of date.
+	     retrieveItems(originalStart, end, callback);
 	   }
 	   else {
-	     retrieveNodes(i + 1, end, callback, originalStart);
+	     // Continue retrieving more items.
+	     retrieveItems(i + 1, end, callback, originalStart);
 	   }
 	 });
 	 return;
@@ -127,37 +132,38 @@
      callback();
    }
 
-   // From: http://stackoverflow.com/a/9329476.
-   function arrayHasOwnIndex(array, prop) {
-     return array.hasOwnProperty(prop) && /^0$|^[1-9]\d*$/.test(prop) && prop <= 4294967294; // 2^32 - 2
-   }
-
-   function refresh() {
-     for (index in items) {
-       if (arrayHasOwnIndex(items, index)) {
-	 items[index] = undefined;
-       }
-     }
+   function clearItems() {
+     items = [];
    }
 
    var list = new VirtualList({
      h: window.innerHeight - 100,
      itemHeight: 30,
-     generatorFn: function(node) {
+     generatorFn: function(item) {
        var el = document.createElement("div");
-       el.innerHTML = "<p style='height: 30px;'>" + node + "</p>";
+       el.innerHTML = "<p style='height: 30px;'>" + item + "</p>";
        return el;
      },
-     getNodes: function(offset, count, callback) {
+     getItems: function(offset, count, callback) {
        var end = offset + count;
-       if (offset + count > db.storeLength()) {
+       if (end > db.storeLength()) {
 	 end = db.storeLength();
        }
-       retrieveNodes(offset, end, function(){
+       retrieveItems(offset, end, function(){
+	 if (end > db.storeLength()) {
+	   end = db.storeLength();
+	 }
 	 callback(items.slice(offset, end), db.storeLength())
        });
      }
    });
+
+   // Force items to refresh from DB.
+   function refresh() {
+     clearItems();
+     list.refresh();
+   }
+   document.getElementById('refresh').addEventListener('click', refresh);
 
    list.container.classList.add("container");
    document.body.appendChild(list.container)
