@@ -81,7 +81,7 @@ function VirtualList(config) {
       scrollUpdate(e.target.scrollTop); // Triggers reflow
       lastScrolled = Date.now();
       e.preventDefault && e.preventDefault();
-    }, 200);
+    }, 300);
   }
 
   this.container.addEventListener('scroll', onScroll);

@@ -100,7 +100,13 @@
        if (items[i] === undefined) {
 	 var pageIndex = getPageIndex(i);
 	 db.retrievePage(pageIndex, function(requestedItems, etag, newItemsCount) {
+	   // Update the count of items.
 	   itemsCount = newItemsCount;
+	   // Make sure we do not request items beyond the end of the list of items.
+	   if (end > itemsCount) {
+	     end = itemsCount;
+	   }
+
 	   // If our etag is out of date, clear all local items.
 	   if (etag != lastEtag) {
 	     clearItems();
@@ -142,10 +148,7 @@
      },
      getItems: function(offset, count, callback) {
        var end = offset + count;
-       if (end > itemsCount) {
-	 end = itemsCount;
-       }
-       retrieveItems(offset, end, function(newItemsCount) {
+       retrieveItems(offset, end, function() {
 	 // The itemsCount may have been updated after the last server request.
 	 if (end > itemsCount) {
 	   end = itemsCount;
