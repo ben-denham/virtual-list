@@ -10,13 +10,13 @@
   <link rel="stylesheet" type="text/css" media="screen,print" href="style.css"/>
 </head>
 <body>
-  <label for="latency">Latency (ms): </label><input name="latency" id="latency" type="text" value="1000"/>
-  <label for="calls">Calls: </label><input readonly="readonly" name="calls" id="calls" type="text" value="0"/>
-  <label for="total-calls">Total Calls: </label><input readonly="readonly" name="total-calls" id="total-calls" type="text" value="0"/>
+  <label for="latency">DB request Latency (ms): </label><input name="latency" id="latency" type="text" value="1000"/>
+  <label for="calls">Active DB requests: </label><input readonly="readonly" name="calls" id="calls" type="text" value="0"/>
+  <label for="total-calls">Total DB requests: </label><input readonly="readonly" name="total-calls" id="total-calls" type="text" value="0"/>
   <input id="refresh" type="button" value="Refresh."/>
   <input id="insertStart" type="button" value="Insert at start of DB."/>
   <input id="removeStart" type="button" value="Remove from start of DB."/>
-  <input id="update" type="button" value="Update DB items."/>
+  <input id="edit" type="button" value="Edit DB items."/>
   <script type="text/javascript" src="../vlist.js"></script>
   <script>
 
@@ -62,7 +62,7 @@
        lastEditedEtag++;
      }
 
-     this.update = function() {
+     this.edit = function() {
        for (var i = 0; i < store.length; i++) {
 	 store[i] = store[i] + ' UPDATED!';
        }
@@ -74,7 +74,7 @@
    var db = new DB();
    document.getElementById('insertStart').addEventListener('click', db.insertStart);
    document.getElementById('removeStart').addEventListener('click', db.removeStart);
-   document.getElementById('update').addEventListener('click', db.update);
+   document.getElementById('edit').addEventListener('click', db.edit);
 
    // Local cache of items.
    var items = [];
