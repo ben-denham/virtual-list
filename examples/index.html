@@ -145,7 +145,8 @@
        if (end > itemsCount) {
 	 end = itemsCount;
        }
-       retrieveItems(offset, end, function(newItemsCount){
+       retrieveItems(offset, end, function(newItemsCount) {
+	 // The itemsCount may have been updated after the last server request.
 	 if (end > itemsCount) {
 	   end = itemsCount;
 	 }
